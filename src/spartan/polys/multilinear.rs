@@ -1,7 +1,6 @@
 //! Main components:
 //! - `MultilinearPolynomial`: Dense representation of multilinear polynomials, represented by evaluations over all possible binary inputs.
 //! - `SparsePolynomial`: Efficient representation of sparse multilinear polynomials, storing only non-zero evaluations.
-
 use std::ops::{Add, Index};
 
 use ff::PrimeField;

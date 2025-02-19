@@ -1,12 +1,11 @@
 [package]
-name = "spartan2"
+name = "sumfold"
 version = "0.1.0"
-authors = ["Srinath Setty <srinath@microsoft.com>"]
+authors = ["Masato Tsutsumi <kingmasatojames@gmail.com>"]
 edition = "2021"
-description = "High-speed SNARKs"
-documentation = "https://docs.rs/spartan2-snark/"
+description = "Folding Sumcheck instances"
 readme = "README.md"
-repository = "https://github.com/Microsoft/Spartan2"
+repository = "https://github.com/grandchildrice/sumfold"
 license-file = "LICENSE"
 keywords = ["zkSNARKs", "cryptography", "proofs"]
 

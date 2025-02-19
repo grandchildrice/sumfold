@@ -4,7 +4,7 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use ff::Field;
 use pasta_curves::Fp;
 
-use spartan2::spartan::polys::eq::EqPolynomial;
+use sumfold::spartan::polys::eq::EqPolynomial;
 
 fn benchmarks_evaluate_incremental(c: &mut Criterion) {
   let mut group = c.benchmark_group("evaluate_incremental");

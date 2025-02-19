@@ -22,6 +22,7 @@ pub mod errors;
 pub mod provider;
 pub mod spartan;
 pub mod traits;
+pub mod sumfold;
 
 use bellpepper_core::Circuit;
 use core::marker::PhantomData;

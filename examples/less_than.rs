@@ -4,7 +4,7 @@ use bellpepper_core::{
 };
 use ff::{PrimeField, PrimeFieldBits};
 use pasta_curves::Fq;
-use spartan2::{
+use sumfold::{
   errors::SpartanError,
   traits::{snark::RelaxedR1CSSNARKTrait, Group},
   SNARK,
@@ -195,8 +195,8 @@ fn verify_circuit_safe<G: Group, S: RelaxedR1CSSNARKTrait<G>>(
 
 fn main() {
   type G = pasta_curves::pallas::Point;
-  type EE = spartan2::provider::ipa_pc::EvaluationEngine<G>;
-  type S = spartan2::spartan::snark::RelaxedR1CSSNARK<G, EE>;
+  type EE = sumfold::provider::ipa_pc::EvaluationEngine<G>;
+  type S = sumfold::spartan::snark::RelaxedR1CSSNARK<G, EE>;
 
   println!("Executing unsafe circuit...");
   //Typical example, ok
