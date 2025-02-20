@@ -1,13 +1,16 @@
 use ff::PrimeField;
+use rayon::prelude::*;
 use crate::spartan::polys::multilinear::MultilinearPolynomial;
 
-/// j番目の多項式群 g_{0,j}(x), g_{1,j}(x), ..., g_{(2^ν - 1), j}(x)
-/// が与えられたとき、
-/// f_j(b,x) = Σ_{i in {0,1}^ν} eq(b, i) * g_{i,j}(x)
-/// を (ν + m) 変数の MLE として構築し、返す。
+/// Given a set of polynomials for the j-th index:
+/// g_{0,j}(x), g_{1,j}(x), ..., g_{(2^ν - 1), j}(x),
+/// this function constructs and returns the multilinear extension (MLE)
+/// defined by:
+///   f_j(b,x) = Σ_{i in {0,1}^ν} eq(b, i) * g_{i,j}(x)
+/// as an MLE in (ν + m) variables.
 ///
-/// - gs_for_j: 長さ 2^ν のスライスで、各要素は m 変数の MultilinearPolynomial。
-/// - 戻り値: (ν + m) 変数の MultilinearPolynomial (dense representation)。
+/// - gs_for_j: A slice of length 2^ν, where each element is a MultilinearPolynomial in m variables.
+/// - Returns: A MultilinearPolynomial in (ν + m) variables (dense representation).
 pub fn build_fj_polynomial<Scalar: PrimeField>(
     gs_for_j: &[MultilinearPolynomial<Scalar>],
 ) -> MultilinearPolynomial<Scalar> {
@@ -18,85 +21,139 @@ pub fn build_fj_polynomial<Scalar: PrimeField>(
 
     let m = gs_for_j[0].get_num_vars();
     for b in 1..num_b {
-        assert_eq!(gs_for_j[b].get_num_vars(), m, "all g_{{b,j}}(x) must have the same number of variables");
+        assert_eq!(
+            gs_for_j[b].get_num_vars(),
+            m,
+            "all g_{{b,j}}(x) must have the same number of variables"
+        );
     }
 
     let new_num_vars = nu + m;
     let new_len = 1 << new_num_vars;
     let mut f_j_evals = vec![Scalar::ZERO; new_len];
 
-    // 修正：インデックスを (x << nu) + b とする
-    for b in 0..num_b {
-        let g_bj_evals = &gs_for_j[b].Z;
-        for x in 0..(1 << m) {
-            let big_index = (b << m) + x;
-            f_j_evals[big_index] = g_bj_evals[x];
-        }
-    }
+    let block_size = 1 << m; // Size of each block
+    // Using parallelization (with rayon)
+    f_j_evals
+        .par_chunks_mut(block_size)
+        .enumerate()
+        .for_each(|(b, chunk)| {
+            // Copy gs_for_j[b].Z into the chunk
+            chunk.copy_from_slice(&gs_for_j[b].Z);
+        });
 
     MultilinearPolynomial::new(f_j_evals)
+}
+
+/// Given decimal representations of b and x,
+/// this function converts them internally into their bit representation (B1,...,Bν, X1,...,Xm)
+/// and evaluates f_j(b,x).
+///
+/// - f: A MultilinearPolynomial in (ν + m) variables (constructed via build_fj_polynomial)
+/// - b: Decimal representation of b. An integer with ν bits (0 <= b < 2^ν)
+/// - x: Decimal representation of x. An integer with m bits (0 <= x < 2^m)
+/// - nu: The number of bits required to represent b.
+/// - m: The number of bits required to represent x.
+pub fn evaluate_fj_at_decimals<Scalar: PrimeField>(
+    f: &MultilinearPolynomial<Scalar>,
+    b: usize,
+    x: usize,
+    nu: usize,
+    m: usize,
+) -> Scalar {
+    // Parallel conversion: obtain the bits of b in order from the most significant bit.
+    let b_bits: Vec<Scalar> = (0..nu)
+        .into_par_iter()
+        .rev()
+        .map(|bit_index| if ((b >> bit_index) & 1) == 1 { Scalar::ONE } else { Scalar::ZERO })
+        .collect();
+
+    // Parallel conversion: obtain the bits of x in order from the most significant bit.
+    let x_bits: Vec<Scalar> = (0..m)
+        .into_par_iter()
+        .rev()
+        .map(|bit_index| if ((x >> bit_index) & 1) == 1 { Scalar::ONE } else { Scalar::ZERO })
+        .collect();
+
+    // Concatenate b_bits and x_bits to form the evaluation input vector.
+    // Since the vectors have already been produced in parallel, a sequential extend is sufficient here.
+    let mut point = Vec::with_capacity(nu + m);
+    point.extend(b_bits);
+    point.extend(x_bits);
+
+    f.evaluate(&point)
 }
 
 #[cfg(test)]
 mod tests {
     use ff::Field;
     use pasta_curves::Fp;
+    use rayon::prelude::*;
     use crate::spartan::polys::multilinear::MultilinearPolynomial;
     use super::*;
 
     #[test]
     fn test_multi_build_fj_polynomial() {
+        // Test with different numbers of b and x values.
+        // The arguments represent the number of b and x values respectively (must be powers of 2).
+        // For example, (b, x) = (2,2) => nu = log₂(2) = 1, m = log₂(2) = 1.
+        // (b, x) = (4,4) => nu = 2, m = 2, etc.
         test_build_fj_polynomial(2, 2);
+        test_build_fj_polynomial(4, 2);
         test_build_fj_polynomial(4, 4);
-        test_build_fj_polynomial(4, 8);
+        test_build_fj_polynomial(8, 2);
+        test_build_fj_polynomial(8, 4);
+        test_build_fj_polynomial(16, 16);
+        test_build_fj_polynomial(64, 64);
+        test_build_fj_polynomial(128, 128);
     }
 
-    fn test_build_fj_polynomial(nu: usize, m: usize) {
-        let num_b = 1 << nu; // 2^ν
-        let num_x = 1 << m;  // 2^m
+    /// b: the number of b values (must be 2^ν)
+    /// x: the number of x values (must be 2^m)
+    /// This function calculates nu and m from b and x.
+    fn test_build_fj_polynomial(b: usize, x: usize) {
+        let nu = (b as f64).log2() as usize; // log₂(b)
+        let m = (x as f64).log2() as usize;  // log₂(x)
 
-        // ランダムな g_{b,j}(x) を用意する。
-        // 今回は「j 番目固定」相当なので、b=0..3 に対して1本ずつMLEを作るだけ。
-        // ここでは "j番目" という概念上、スライス gs_for_j のみを構築すればよい。
-        let mut rng = rand::thread_rng();
-        let mut gs_for_j = Vec::with_capacity(num_b);
-        for _b in 0..num_b {
-            // m=2変数 => 評価点数は4
-            let evals: Vec<Fp> = (0..num_x).map(|_| Fp::random(&mut rng)).collect();
-            let mlp = MultilinearPolynomial::new(evals);
-            gs_for_j.push(mlp);
-        }
+        // Prepare random g_{b,j}(x) polynomials.
+        // In this test, we assume the j-th index is fixed,
+        // so we only need to construct one MLE for each b.
+        // For the purpose of the "j-th index", we only need to build the slice gs_for_j.
+        println!("building gs_for_j...");
+        let gs_for_j: Vec<MultilinearPolynomial<Fp>> = (0..b)
+            .into_par_iter()
+            .map(|_| {
+                // Generate an independent RNG for each thread.
+                let mut rng = rand::thread_rng();
+                // Generate num_x evaluation values.
+                let evals: Vec<Fp> = (0..x)
+                    .map(|_| Fp::random(&mut rng))
+                    .collect();
+                MultilinearPolynomial::new(evals)
+            })
+            .collect();
 
-        // build_fj_polynomial で f_j(b,x) を構築
+        println!("building f_j(b,x)...");
+        // Construct f_j(b,x) using build_fj_polynomial.
         let f_j = build_fj_polynomial(&gs_for_j);
-
-        // f_j は (ν + m) = 4 変数 => 評価点数は 2^4=16
+        println!("...done");
+        // f_j is a polynomial in (ν + m) variables, so the number of evaluation points is 2^(ν + m).
         assert_eq!(f_j.get_num_vars(), nu + m);
         assert_eq!(f_j.len(), 1 << (nu + m));
 
-        // 各 b, x について f_j(b, x) が g_{b,j}(x) と一致するかチェック
-        for b in 0..num_b {
-            for x in 0..num_x {
-                let expected = gs_for_j[b].Z[x];
+        // For each b and x, use evaluate_fj_at_decimals to check that the evaluation of f_j(b,x)
+        // matches gs_for_j[b].Z[x].
+        (0..(b * x)).into_par_iter().for_each(|idx| {
+            let b_val = idx / x;
+            let x_val = idx % x;
+            println!("running evaluation at b={}, x={}...", b_val, x_val);
+            let expected = gs_for_j[b_val].Z[x_val];
+            let actual = evaluate_fj_at_decimals(&f_j, b_val, x_val, nu, m);
+            assert_eq!(actual, expected,
+                "Mismatch at b={}, x={}, expected={:?}, got={:?}",
+                b_val, x_val, expected, actual);
+            println!("...done");
+        });
 
-                // 入力 (b_bits, x_bits) を作り、f_j.evaluate(...) で確認
-                // b_bits: νビット, x_bits: mビット
-                let mut point = Vec::with_capacity(nu + m);
-                for bit_index in (0..nu).rev() {
-                    let bit_val = if ((b >> bit_index) & 1) == 1 { Fp::ONE } else { Fp::ZERO };
-                    point.push(bit_val);
-                }
-                for bit_index in (0..m).rev() {
-                    let bit_val = if ((x >> bit_index) & 1) == 1 { Fp::ONE } else { Fp::ZERO };
-                    point.push(bit_val);
-                }
-
-                let actual = f_j.evaluate(&point);
-                assert_eq!(actual, expected,
-                    "Mismatch at b={}, x={:?}, expected={:?}, got={:?}",
-                    b, x, expected, actual);
-            }
-        }
     }
-
 }
