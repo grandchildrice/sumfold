@@ -1,7 +1,9 @@
+//! This library implements Q(b) polynomia for SumFold.
 use ff::PrimeField;
 use rayon::prelude::*;
 use crate::spartan::polys::eq::EqPolynomial;
 use crate::spartan::polys::multilinear::MultilinearPolynomial;
+use crate::sumfold::fj_poly::build_bx_point;
 
 /// Converts a decimal integer `val` into a bit vector of length `num_bits`,
 /// from the most significant bit to the least significant bit.
@@ -18,34 +20,6 @@ fn decimal_to_bits_msb_first<Scalar: PrimeField>(val: usize, num_bits: usize) ->
         bits.push(bit_val);
     }
     bits
-}
-
-/// Builds the assignment vector (b,x) in (nu + l) bits, also from MSB to LSB.
-/// The first `nu` bits correspond to `b`, and the next `l` bits to `x`.
-fn build_bx_point<Scalar: PrimeField>(b_val: usize, x_val: usize, nu: usize, l: usize) -> Vec<Scalar> {
-    let mut point = Vec::with_capacity(nu + l);
-
-    // b in MSB-first order
-    for i in (0..nu).rev() {
-        let bit_b = if ((b_val >> i) & 1) == 1 {
-            Scalar::ONE
-        } else {
-            Scalar::ZERO
-        };
-        point.push(bit_b);
-    }
-
-    // x in MSB-first order
-    for i in (0..l).rev() {
-        let bit_x = if ((x_val >> i) & 1) == 1 {
-            Scalar::ONE
-        } else {
-            Scalar::ZERO
-        };
-        point.push(bit_x);
-    }
-
-    point
 }
 
 /// Constructs Q(b) = eq(rho, b) * ( sum_{x in {0,1}^l} F( f_1(b,x), ..., f_t(b,x) ) ).
@@ -150,7 +124,7 @@ mod tests {
         //    t: number of polynomials per b.
         // Compute nu and l from n and x.
         let nu = (n as f64).log2() as usize; // nu = log₂(n)
-        let m  = (x as f64).log2() as usize;  // l = log₂(x)
+        let l  = (x as f64).log2() as usize;  // l = log₂(x)
 
         // 2) For each b in [0..n), create t random 1-variable polynomials g_b^j.
         //    Each such polynomial has 2 evaluations (since x=2 => 1 variable => 2^1=2).
@@ -169,7 +143,7 @@ mod tests {
         // 3) Build f_j(b,x) in (nu+l) variables.
         //    Since nu + l = (log₂(n) + log₂(x)), the total number of evaluation points is 2^(nu+l).
         println!("building f_j(b,x)...");
-        let size = 1 << (nu + m);
+        let size = 1 << (nu + l);
         let mut f_js = Vec::with_capacity(t);
         for j in 0..t {
             let mut f_eval = vec![Scalar::ZERO; size]; // size = 2^(nu+l)
@@ -177,7 +151,7 @@ mod tests {
             // because the b-bits are the top bits and x-bits are the bottom bits.
             for b_val in 0..n {
                 for x_val in 0..x {
-                    let index = (b_val << m) + x_val;
+                    let index = (b_val << l) + x_val;
                     f_eval[index] = g_bj[b_val][j].Z[x_val];
                 }
             }
@@ -189,7 +163,7 @@ mod tests {
 
         // 5) Build Q(b) = eq(rho,b) * sum_x( product_{j=1..t} f_j(b,x) )
         println!("building Q...");
-        let Q = build_q_polynomial(&f_js, &product_F, rho, nu, m);
+        let Q = build_q_polynomial(&f_js, &product_F, rho, nu, l);
 
         // 6) Let r_b = rho, evaluate Q(r_b)
         let r_b = rho;

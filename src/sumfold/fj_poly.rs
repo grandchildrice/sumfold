@@ -1,3 +1,4 @@
+//! This library implements fj(x) polynomia for SumFold.
 use ff::PrimeField;
 use rayon::prelude::*;
 use crate::spartan::polys::multilinear::MultilinearPolynomial;
@@ -19,20 +20,20 @@ pub fn build_fj_polynomial<Scalar: PrimeField>(
     assert!((1 << (log_num_b as usize)) == num_b, "gs_for_j.len() must be 2^ν");
     let nu = log_num_b as usize;
 
-    let m = gs_for_j[0].get_num_vars();
+    let l = gs_for_j[0].get_num_vars();
     for b in 1..num_b {
         assert_eq!(
             gs_for_j[b].get_num_vars(),
-            m,
+            l,
             "all g_{{b,j}}(x) must have the same number of variables"
         );
     }
 
-    let new_num_vars = nu + m;
+    let new_num_vars = nu + l;
     let new_len = 1 << new_num_vars;
     let mut f_j_evals = vec![Scalar::ZERO; new_len];
 
-    let block_size = 1 << m; // Size of each block
+    let block_size = 1 << l; // Size of each block
     // Using parallelization (with rayon)
     f_j_evals
         .par_chunks_mut(block_size)
@@ -59,29 +60,40 @@ pub fn evaluate_fj_at_decimals<Scalar: PrimeField>(
     b: usize,
     x: usize,
     nu: usize,
-    m: usize,
+    l: usize,
 ) -> Scalar {
-    // Parallel conversion: obtain the bits of b in order from the most significant bit.
-    let b_bits: Vec<Scalar> = (0..nu)
-        .into_par_iter()
-        .rev()
-        .map(|bit_index| if ((b >> bit_index) & 1) == 1 { Scalar::ONE } else { Scalar::ZERO })
-        .collect();
-
-    // Parallel conversion: obtain the bits of x in order from the most significant bit.
-    let x_bits: Vec<Scalar> = (0..m)
-        .into_par_iter()
-        .rev()
-        .map(|bit_index| if ((x >> bit_index) & 1) == 1 { Scalar::ONE } else { Scalar::ZERO })
-        .collect();
-
     // Concatenate b_bits and x_bits to form the evaluation input vector.
     // Since the vectors have already been produced in parallel, a sequential extend is sufficient here.
-    let mut point = Vec::with_capacity(nu + m);
-    point.extend(b_bits);
-    point.extend(x_bits);
-
+    let point = build_bx_point(b, x, nu, l);
     f.evaluate(&point)
+}
+
+/// Builds the assignment vector (b,x) in (nu + l) bits, also from MSB to LSB.
+/// The first `nu` bits correspond to `b`, and the next `l` bits to `x`.
+pub fn build_bx_point<Scalar: PrimeField>(b_val: usize, x_val: usize, nu: usize, l: usize) -> Vec<Scalar> {
+    let mut point = Vec::with_capacity(nu + l);
+
+    // b in MSB-first order
+    for i in (0..nu).rev() {
+        let bit_b = if ((b_val >> i) & 1) == 1 {
+            Scalar::ONE
+        } else {
+            Scalar::ZERO
+        };
+        point.push(bit_b);
+    }
+
+    // x in MSB-first order
+    for i in (0..l).rev() {
+        let bit_x = if ((x_val >> i) & 1) == 1 {
+            Scalar::ONE
+        } else {
+            Scalar::ZERO
+        };
+        point.push(bit_x);
+    }
+
+    point
 }
 
 #[cfg(test)]
@@ -113,7 +125,7 @@ mod tests {
     /// This function calculates nu and m from b and x.
     fn test_build_fj_polynomial(b: usize, x: usize) {
         let nu = (b as f64).log2() as usize; // log₂(b)
-        let m = (x as f64).log2() as usize;  // log₂(x)
+        let l = (x as f64).log2() as usize;  // log₂(x)
 
         // Prepare random g_{b,j}(x) polynomials.
         // In this test, we assume the j-th index is fixed,
@@ -138,8 +150,8 @@ mod tests {
         let f_j = build_fj_polynomial(&gs_for_j);
         println!("...done");
         // f_j is a polynomial in (ν + m) variables, so the number of evaluation points is 2^(ν + m).
-        assert_eq!(f_j.get_num_vars(), nu + m);
-        assert_eq!(f_j.len(), 1 << (nu + m));
+        assert_eq!(f_j.get_num_vars(), nu + l);
+        assert_eq!(f_j.len(), 1 << (nu + l));
 
         // For each b and x, use evaluate_fj_at_decimals to check that the evaluation of f_j(b,x)
         // matches gs_for_j[b].Z[x].
@@ -148,7 +160,7 @@ mod tests {
             let x_val = idx % x;
             println!("running evaluation at b={}, x={}...", b_val, x_val);
             let expected = gs_for_j[b_val].Z[x_val];
-            let actual = evaluate_fj_at_decimals(&f_j, b_val, x_val, nu, m);
+            let actual = evaluate_fj_at_decimals(&f_j, b_val, x_val, nu, l);
             assert_eq!(actual, expected,
                 "Mismatch at b={}, x={}, expected={:?}, got={:?}",
                 b_val, x_val, expected, actual);
