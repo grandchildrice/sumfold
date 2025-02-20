@@ -1,3 +1,4 @@
+//! This module contains the implementation of the sumcheck protocol.
 #![allow(clippy::too_many_arguments)]
 #![allow(clippy::type_complexity)]
 use crate::errors::SpartanError;
@@ -12,15 +13,29 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
-pub(crate) struct SumcheckProof<G: Group> {
+/// A proof for the sumcheck protocol.
+pub struct SumcheckProof<G: Group> {
   compressed_polys: Vec<CompressedUniPoly<G::Scalar>>,
 }
 
 impl<G: Group> SumcheckProof<G> {
+  /// Creates a new `SumcheckProof` with the given compressed polynomials.
   pub fn new(compressed_polys: Vec<CompressedUniPoly<G::Scalar>>) -> Self {
     Self { compressed_polys }
   }
 
+  /// Verifies the sumcheck proof.
+  ///
+  /// # Arguments
+  ///
+  /// * `claim` - The claimed sum.
+  /// * `num_rounds` - The number of rounds in the sumcheck protocol.
+  /// * `degree_bound` - The degree bound for the univariate polynomials.
+  /// * `transcript` - The transcript engine.
+  ///
+  /// # Returns
+  ///
+  /// A result containing the final evaluation and the verifier's challenges, or an error if the proof is invalid.
   pub fn verify(
     &self,
     claim: G::Scalar,
@@ -63,6 +78,17 @@ impl<G: Group> SumcheckProof<G> {
     Ok((e, r))
   }
 
+  /// Computes the evaluation points for a quadratic polynomial.
+  ///
+  /// # Arguments
+  ///
+  /// * `poly_A` - The first multilinear polynomial.
+  /// * `poly_B` - The second multilinear polynomial.
+  /// * `comb_func` - The combination function.
+  ///
+  /// # Returns
+  ///
+  /// A tuple containing the evaluation points.
   #[inline]
   pub(in crate::spartan) fn compute_eval_points_quadratic<F>(
     poly_A: &MultilinearPolynomial<G::Scalar>,
@@ -91,6 +117,20 @@ impl<G: Group> SumcheckProof<G> {
       )
   }
 
+  /// Proves the sumcheck protocol for quadratic polynomials.
+  ///
+  /// # Arguments
+  ///
+  /// * `claim` - The claimed sum.
+  /// * `num_rounds` - The number of rounds in the sumcheck protocol.
+  /// * `poly_A` - The first multilinear polynomial.
+  /// * `poly_B` - The second multilinear polynomial.
+  /// * `comb_func` - The combination function.
+  /// * `transcript` - The transcript engine.
+  ///
+  /// # Returns
+  ///
+  /// A result containing the sumcheck proof, the verifier's challenges, and the final evaluations, or an error if the proof is invalid.
   pub fn prove_quad<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -139,6 +179,21 @@ impl<G: Group> SumcheckProof<G> {
     ))
   }
 
+  /// Proves the sumcheck protocol for quadratic polynomials in batch mode.
+  ///
+  /// # Arguments
+  ///
+  /// * `claim` - The claimed sum.
+  /// * `num_rounds` - The number of rounds in the sumcheck protocol.
+  /// * `poly_A_vec` - A vector of first multilinear polynomials.
+  /// * `poly_B_vec` - A vector of second multilinear polynomials.
+  /// * `coeffs` - Coefficients for combining the evaluations.
+  /// * `comb_func` - The combination function.
+  /// * `transcript` - The transcript engine.
+  ///
+  /// # Returns
+  ///
+  /// A result containing the sumcheck proof, the verifier's challenges, and the final evaluations, or an error if the proof is invalid.
   pub fn prove_quad_batch<F>(
     claim: &G::Scalar,
     num_rounds: usize,
@@ -243,6 +298,22 @@ impl<G: Group> SumcheckProof<G> {
       )
   }
 
+  /// Proves the sumcheck protocol for cubic polynomials with an additive term.
+  ///
+  /// # Arguments
+  ///
+  /// * `claim` - The claimed sum.
+  /// * `num_rounds` - The number of rounds in the sumcheck protocol.
+  /// * `poly_A` - The first multilinear polynomial.
+  /// * `poly_B` - The second multilinear polynomial.
+  /// * `poly_C` - The third multilinear polynomial.
+  /// * `poly_D` - The fourth multilinear polynomial.
+  /// * `comb_func` - The combination function.
+  /// * `transcript` - The transcript engine.
+  ///
+  /// # Returns
+  ///
+  /// A result containing the sumcheck proof, the verifier's challenges, and the final evaluations, or an error if the proof is invalid.
   pub fn prove_cubic_with_additive_term<F>(
     claim: &G::Scalar,
     num_rounds: usize,

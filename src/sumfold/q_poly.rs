@@ -43,10 +43,10 @@ pub fn build_q_polynomial<Scalar: PrimeField>(
     let eq_poly_rho = EqPolynomial::new(rho_bits);
 
     // 2) We'll build Q in dense form for b in [0..2^nu].
-    let len_b = 1 << nu;
+    let len_n = 1 << nu;
     let len_x = 1 << l;
     let t = f_js.len();
-    let mut q_evals = vec![Scalar::ZERO; len_b];
+    let mut q_evals = vec![Scalar::ZERO; len_n];
 
     // 3) For each b in [0..2^nu), compute eq(rho,b) and sum over x.
     //    Q(b) = eq(rho,b) * Σ_x F( f_1(b,x), ..., f_t(b,x) ).

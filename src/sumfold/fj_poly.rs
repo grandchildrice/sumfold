@@ -123,8 +123,8 @@ mod tests {
     /// b: the number of b values (must be 2^ν)
     /// x: the number of x values (must be 2^m)
     /// This function calculates nu and m from b and x.
-    fn test_build_fj_polynomial(b: usize, x: usize) {
-        let nu = (b as f64).log2() as usize; // log₂(b)
+    fn test_build_fj_polynomial(n: usize, x: usize) {
+        let nu = (n as f64).log2() as usize; // log₂(b)
         let l = (x as f64).log2() as usize;  // log₂(x)
 
         // Prepare random g_{b,j}(x) polynomials.
@@ -132,7 +132,7 @@ mod tests {
         // so we only need to construct one MLE for each b.
         // For the purpose of the "j-th index", we only need to build the slice gs_for_j.
         println!("building gs_for_j...");
-        let gs_for_j: Vec<MultilinearPolynomial<Fp>> = (0..b)
+        let gs_for_j: Vec<MultilinearPolynomial<Fp>> = (0..n)
             .into_par_iter()
             .map(|_| {
                 // Generate an independent RNG for each thread.
@@ -155,7 +155,7 @@ mod tests {
 
         // For each b and x, use evaluate_fj_at_decimals to check that the evaluation of f_j(b,x)
         // matches gs_for_j[b].Z[x].
-        (0..(b * x)).into_par_iter().for_each(|idx| {
+        (0..(n * x)).into_par_iter().for_each(|idx| {
             let b_val = idx / x;
             let x_val = idx % x;
             println!("running evaluation at b={}, x={}...", b_val, x_val);
